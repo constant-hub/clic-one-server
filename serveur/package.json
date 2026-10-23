@@ -1,0 +1,17 @@
+{
+  "name": "clic-one",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Clic-One : serveur de la boutique en ligne (stockage MongoDB Atlas)",
+  "scripts": {
+    "start": "node serveur/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.9",
+    "mongodb": "^6.8.0",
+    "mongoose": "^9.11.4"
+  }
+}
