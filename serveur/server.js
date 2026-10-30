@@ -1,4 +1,4 @@
-'use strict';
+//'use strict';
 /* ==========================================================================
    Clic-One : serveur de la boutique en ligne (Node.js >= 18, aucune dépendance)
    - sert la vitrine (services) (dossier ../boutique)
