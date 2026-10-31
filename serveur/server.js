@@ -1,4 +1,4 @@
-//'use strict';
+'use strict';
 /* ==========================================================================
    Clic-One : serveur de la boutique en ligne (Node.js >= 18, aucune dépendance)
    - sert la vitrine (services) (dossier ../boutique)
@@ -32,7 +32,6 @@ function fileStorage() {
     kind: 'Fichiers locaux (' + DATA + ')',
     async getConfig() { return load('config.json', null); }, async setConfig(v) { save('config.json', v); },
     async getCatalogue() { return load('catalogue.json', { entreprise: {}, services: [], updatedAt: null }); }, async setCatalogue(c) { save('catalogue.json', c); },
-    async savePhotos(numero, items) { save('photos_' + numero + '.json', items); }, async getPhotos(numero) { return load('photos_' + numero + '.json', []); },
     async getCommandes() { cmds = load('commandes.json', []); return cmds; }, async saveCommande(o) { if (!cmds) cmds = load('commandes.json', []); const i = cmds.findIndex(x => x.numero === o.numero); if (i >= 0) cmds[i] = o; else cmds.push(o); save('commandes.json', cmds); },
     async getBackup() { return load('sauvegarde.json', null); }, async setBackup(b) { save('sauvegarde.json', b); },
     async isEmpty() { return true; }, async close() { }
@@ -43,24 +42,21 @@ async function mongoStorage(uri, dbName) {
   try { ({ MongoClient } = require('mongodb')); } catch (e) { throw new Error('Le module « mongodb » n\'est pas installé : exécutez « npm install » à la racine du projet (là où se trouve package.json).'); }
   const client = new MongoClient(uri, { serverSelectionTimeoutMS: 12000, appName: 'clic-one' });
   await client.connect();
-  const db = client.db(dbName), C = { config: db.collection('config'), meta: db.collection('meta'), services: db.collection('services'), commandes: db.collection('commandes'), photos: db.collection('photos'), sauvegardes: db.collection('sauvegardes') };
+  const db = client.db(dbName), C = { config: db.collection('config'), meta: db.collection('meta'), services: db.collection('services'), commandes: db.collection('commandes'), sauvegardes: db.collection('sauvegardes') };
   await C.commandes.createIndex({ creeLe: 1 }).catch(() => { });
   const strip = ({ _id, ...r }) => r;
   return {
     kind: 'MongoDB Atlas (base « ' + dbName + ' »)',
     async getConfig() { const d = await C.config.findOne({ _id: 'main' }); return d ? d.value : null; },
     async setConfig(v) { await C.config.replaceOne({ _id: 'main' }, { _id: 'main', value: v }, { upsert: true }); },
-    async getCatalogue() { const m = await C.meta.findOne({ _id: 'catalogue' }), sv = await C.services.find({}).sort({ nom: 1 }).toArray(); return { entreprise: m ? m.entreprise : {}, services: sv.map(strip), livraison: m ? m.livraison : { actif: false, zones: [] }, updatedAt: m ? m.updatedAt : null }; },
+    async getCatalogue() { const m = await C.meta.findOne({ _id: 'catalogue' }), sv = await C.services.find({}).sort({ nom: 1 }).toArray(); return { entreprise: m ? m.entreprise : {}, services: sv.map(strip), updatedAt: m ? m.updatedAt : null }; },
     async setCatalogue(c) {
-      await C.meta.replaceOne({ _id: 'catalogue' }, { _id: 'catalogue', entreprise: c.entreprise, livraison: c.livraison, updatedAt: c.updatedAt }, { upsert: true });
+      await C.meta.replaceOne({ _id: 'catalogue' }, { _id: 'catalogue', entreprise: c.entreprise, updatedAt: c.updatedAt }, { upsert: true });
       if (c.services.length) await C.services.bulkWrite(c.services.map(s => ({ replaceOne: { filter: { _id: s.id }, replacement: Object.assign({ _id: s.id }, s), upsert: true } })));
       await C.services.deleteMany({ _id: { $nin: c.services.map(s => s.id) } });
     },
     async getCommandes() { return (await C.commandes.find({}).sort({ creeLe: 1 }).toArray()).map(strip); },
     async saveCommande(o) { await C.commandes.replaceOne({ _id: o.numero }, Object.assign({ _id: o.numero }, o), { upsert: true }); },
-    // une photo = un document (limite MongoDB de 16 Mo par document : une commande peut contenir 20 photos Full HD)
-    async savePhotos(numero, items) { if (items.length) await C.photos.bulkWrite(items.map(p => ({ replaceOne: { filter: { _id: numero + ':' + p.id }, replacement: Object.assign({ _id: numero + ':' + p.id, numero }, p), upsert: true } }))); },
-    async getPhotos(numero) { return (await C.photos.find({ numero }).toArray()).map(({ _id, numero: n, ...p }) => p).sort((x, y) => Number(String(x.id).slice(1)) - Number(String(y.id).slice(1))); },
     async getBackup() {
       const docs = await C.sauvegardes.find({}).toArray(); if (!docs.length) return null; const data = {}; let at = null, par = '';
       docs.forEach(d => { if (d._id === '_meta') { at = d.at; par = d.par; } else data[d._id] = d.value; }); return { at, par, data };
@@ -116,12 +112,7 @@ function cleanServices(arr) {
   return { ok, ignores };
 }
 function cleanEntreprise(e) {
-  e = e || {}; return { nom: str(e.nom, 80), slogan: str(e.slogan, 160), apropos: str(e.apropos, 700), adresse: str(e.adresse, 200), email: str(e.email, 120), tel: str(e.tel, 40), logo: typeof e.logo === 'string' && e.logo.length < 400000 && IMG.test(e.logo) ? e.logo : '' };
-}
-
-function cleanLivraison(l) {
-  l = l || {}; const zones = (Array.isArray(l.zones) ? l.zones : []).slice(0, 60).map(z => ({ nom: str(z && z.nom, 60), frais: Math.round(Math.min(Math.max(num(z && z.frais) || 0, 0), 1e7) * 100) / 100 })).filter(z => z.nom);
-  return { actif: !!l.actif && zones.length > 0, zones };
+  e = e || {}; return { nom: str(e.nom, 80), slogan: str(e.slogan, 160), adresse: str(e.adresse, 200), email: str(e.email, 120), tel: str(e.tel, 40), logo: typeof e.logo === 'string' && e.logo.length < 400000 && IMG.test(e.logo) ? e.logo : '' };
 }
 
 /* ---------- commandes ---------- */
@@ -129,40 +120,25 @@ async function nextNumero() {
   const y = String(new Date().getFullYear()); cfg.seq[y] = (cfg.seq[y] || 0) + 1; await store.setConfig(cfg);
   return 'CMD-WEB-' + y + '-' + String(cfg.seq[y]).padStart(4, '0');
 }
-const PHOTO = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/, MAX_PHOTO = 2000000, MAX_PHOTOS_LIGNE = 5, MAX_PHOTOS_COMMANDE = 10;
 async function createOrder(b) {
   if (b.website) throw Object.assign(new Error('Requête refusée'), { code: 400 });   // champ piège (anti-robot)
-  const c = b.client || {}, nom = str(c.nom, 80), tel = str(c.telephone, 24), email = str(c.email, 120), date = str(b.dateSouhaitee, 10);
+  const c = b.client || {}, nom = str(c.nom, 80), tel = str(c.telephone, 24), email = str(c.email, 120), adresse = str(c.adresse, 250), date = str(b.dateSouhaitee, 10);
   if (nom.length < 2) throw Object.assign(new Error('Veuillez indiquer votre nom.'), { code: 422 });
   if (!/^[+0-9][0-9 ()+.-]{6,23}$/.test(tel) || digits(tel).length < 7) throw Object.assign(new Error('Numéro de téléphone invalide.'), { code: 422 });
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw Object.assign(new Error('Adresse e-mail invalide.'), { code: 422 });
   if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw Object.assign(new Error('Date souhaitée invalide.'), { code: 422 });
-  if (!Array.isArray(b.lignes) || !b.lignes.length || b.lignes.length > 20) throw Object.assign(new Error('Votre panier est vide.'), { code: 422 });
-  // livraison : les frais viennent TOUJOURS des zones publiées par l'entreprise
-  const lv = b.livraison || {}, mode = lv.mode === 'Livraison' ? 'Livraison' : 'Retrait', adresse = str(lv.adresse, 250); let zone = '', frais = 0;
-  if (mode === 'Livraison') {
-    if (!catalogue.livraison.actif) throw Object.assign(new Error('La livraison n\'est pas proposée pour le moment : choisissez le retrait.'), { code: 422 });
-    const z = catalogue.livraison.zones.find(x => x.nom === str(lv.zone, 60)); if (!z) throw Object.assign(new Error('Veuillez choisir votre zone de livraison.'), { code: 422 });
-    if (adresse.length < 5) throw Object.assign(new Error('Veuillez indiquer l\'adresse de livraison.'), { code: 422 });
-    zone = z.nom; frais = z.frais;
-  }
-  const lignes = [], photos = []; let sousTotal = 0, surDevis = false;
-  b.lignes.forEach((l, i) => {
-    const id = str(l && l.id, 40), qty = Math.floor(num(l && l.qty)), it = catalogue.services.find(x => x.id === id);
-    if (!id || !(qty >= 1 && qty <= 999)) throw Object.assign(new Error('Quantité invalide.'), { code: 422 });
-    if (!it) throw Object.assign(new Error('Un service de votre panier n\'est plus disponible.'), { code: 409 });
-    const ph = (Array.isArray(l.photos) ? l.photos : []).slice(0, MAX_PHOTOS_LIGNE), meta = [];
-    ph.forEach(p => {
-      if (!p || typeof p.data !== 'string' || p.data.length > MAX_PHOTO || !PHOTO.test(p.data)) throw Object.assign(new Error('Une photo est invalide ou trop lourde.'), { code: 422 });
-      if (photos.length >= MAX_PHOTOS_COMMANDE) throw Object.assign(new Error('Maximum ' + MAX_PHOTOS_COMMANDE + ' photos par commande.'), { code: 422 });
-      const pid = 'P' + (photos.length + 1); photos.push({ id: pid, ligne: i, nom: str(p.nom, 80) || (pid + '.jpg'), data: p.data }); meta.push({ id: pid, nom: photos[photos.length - 1].nom, taille: Math.round(p.data.length * 0.75) });
-    });
-    const t = Math.round(it.prix * qty * 100) / 100; sousTotal += t; if (!(it.prix > 0)) surDevis = true;
-    lignes.push({ type: 'service', id, nom: it.nom, qty, prix: it.prix, total: t, titre: str(l.titre, 120), besoin: str(l.besoin, 2000), commentaire: str(l.commentaire, 1000), photos: meta });
+  if (!Array.isArray(b.lignes) || !b.lignes.length || b.lignes.length > 10) throw Object.assign(new Error('Aucun service sélectionné.'), { code: 422 });
+  const need = {};   // les noms et prix viennent TOUJOURS du catalogue du serveur
+  b.lignes.forEach(l => { const id = str(l && l.id, 40), qty = Math.floor(num(l && l.qty)); if (!id || !(qty >= 1 && qty <= 999)) throw Object.assign(new Error('Quantité invalide.'), { code: 422 }); need[id] = (need[id] || 0) + qty; });
+  const lignes = []; let total = 0, surDevis = false;
+  Object.keys(need).forEach(id => {
+    const it = catalogue.services.find(x => x.id === id);
+    if (!it) throw Object.assign(new Error('Ce service n\'est plus disponible.'), { code: 409 });
+    const t = Math.round(it.prix * need[id] * 100) / 100; total += t; if (!(it.prix > 0)) surDevis = true;
+    lignes.push({ type: 'service', id, nom: it.nom, qty: need[id], prix: it.prix, total: t });
   });
   const now = new Date().toISOString(), numero = await nextNumero();
-  const o = { numero, creeLe: now, statut: 'Nouvelle', client: { nom, telephone: tel, email, adresse: mode === 'Livraison' ? adresse : '' }, mode, livraison: { mode, zone, adresse: mode === 'Livraison' ? adresse : '', frais }, fraisLivraison: frais, dateSouhaitee: date, note: str(b.note, 1000), lignes, sousTotal: Math.round(sousTotal * 100) / 100, total: Math.round((sousTotal + frais) * 100) / 100, surDevis, historique: [{ le: now, statut: 'Nouvelle' }] };
-  if (photos.length) await store.savePhotos(numero, photos);
+  const o = { numero, creeLe: now, statut: 'Nouvelle', client: { nom, telephone: tel, email, adresse }, mode: 'Service', dateSouhaitee: date, note: str(b.note, 1000), lignes, total: Math.round(total * 100) / 100, surDevis, historique: [{ le: now, statut: 'Nouvelle' }] };
   commandes.push(o); await store.saveCommande(o); return o;
 }
 
@@ -172,45 +148,32 @@ async function api(req, res, url) {
   if (p === '/api/ping' && m === 'GET') return send(res, 200, { ok: true, boutique: catalogue.entreprise.nom || '', publie: catalogue.updatedAt, stockage: store.kind });
   if (p === '/api/catalogue' && m === 'GET') return send(res, 200, catalogue);
   if (p === '/api/catalogue' && m === 'PUT') {
-    //if (!isAdmin(req)) return send(res, 401, { erreur: 'Clé d\'accès invalide.' });
     const b = await body(req, 40 * 1024 * 1024), sv = cleanServices(b.services);
-    catalogue = { entreprise: cleanEntreprise(b.entreprise), livraison: cleanLivraison(b.livraison), services: sv.ok, updatedAt: new Date().toISOString() };
+    catalogue = { entreprise: cleanEntreprise(b.entreprise), services: sv.ok, updatedAt: new Date().toISOString() };
     await store.setCatalogue(catalogue); return send(res, 200, { ok: true, services: catalogue.services.length, ignores: sv.ignores, updatedAt: catalogue.updatedAt });
   }
-  //if (p === '/api/commandes' && m === 'POST') //{
-    //if (limited(req, 'order', 8, 3600e3) || limited(req, 'order-fast', 1, 3000)) return send(res, 429, { erreur: 'Trop de commandes en peu de temps. Réessayez dans quelques minutes.' });
-    //const o = await createOrder(await body(req, 16 * 1024 * 1024)); return send(res, 201, { ok: true, numero: o.numero, total: o.total, fraisLivraison: o.fraisLivraison, statut: o.statut });
-  //}
-  //if (p === '/api/suivi' && m === 'GET')
-   // if (limited(req, 'track', 30, 3600e3)) return send(res, 429, { erreur: 'Trop de recherches. Réessayez plus tard.' });
+  if (p === '/api/commandes' && m === 'POST') {
+    if (limited(req, 'order', 8, 3600e3) || limited(req, 'order-fast', 1, 3000)) return send(res, 429, { erreur: 'Trop de commandes en peu de temps. Réessayez dans quelques minutes.' });
+    const o = await createOrder(await body(req, 60 * 1024)); return send(res, 201, { ok: true, numero: o.numero, total: o.total, statut: o.statut });
+  }
+  if (p === '/api/suivi' && m === 'GET') {
+    if (limited(req, 'track', 30, 3600e3)) return send(res, 429, { erreur: 'Trop de recherches. Réessayez plus tard.' });
     const n = str(url.searchParams.get('numero'), 30).toUpperCase(), t = digits(url.searchParams.get('tel')), o = commandes.find(x => x.numero === n);
     if (!o || !t || digits(o.client.telephone) !== t) return send(res, 404, { erreur: 'Commande introuvable : vérifiez le numéro et le téléphone.' });
-    return send(res, 200, { numero: o.numero, statut: o.statut, mode: o.mode, total: o.total, surDevis: !!o.surDevis, fraisLivraison: o.fraisLivraison || 0, modeReception: o.mode, creeLe: o.creeLe, lignes: o.lignes.map(l => ({ nom: l.nom, qty: l.qty, total: l.total })), historique: o.historique });
-
-  //if (p === '/api/commandes' && m === 'GET')
-  // {
-   // if (!isAdmin(req)) return send(res, 401, { erreur: 'Clé d\'accès invalide.' });
+    return send(res, 200, { numero: o.numero, statut: o.statut, mode: o.mode, total: o.total, surDevis: !!o.surDevis, creeLe: o.creeLe, lignes: o.lignes.map(l => ({ nom: l.nom, qty: l.qty, total: l.total })), historique: o.historique });
+  }
+  if (p === '/api/commandes' && m === 'GET') {
     return send(res, 200, { commandes, catalogueMajLe: catalogue.updatedAt });
-  //}
-  //if (p === '/api/gestion/sauvegarde' && (m === 'PUT' || m === 'GET')) 
-  //{   // sauvegarde cloud des données de l'application de gestion
-    //if (!isAdmin(req)) return send(res, 401, { erreur: 'Clé d\'accès invalide.' });
+  }
+  if (p === '/api/gestion/sauvegarde' && (m === 'PUT' || m === 'GET')) {
     if (m === 'GET') { const b = await store.getBackup(); return b ? send(res, 200, b) : send(res, 404, { erreur: 'Aucune sauvegarde enregistrée.' }); }
     const b = await body(req, 40 * 1024 * 1024), data = b && b.data;
     if (!data || typeof data !== 'object' || Array.isArray(data)) return send(res, 422, { erreur: 'Sauvegarde invalide.' });
     const clean = {}; Object.keys(data).slice(0, 200).forEach(k => { if (/^[A-Za-z0-9_-]{1,60}$/.test(k)) clean[k] = data[k]; });
     await store.setBackup({ at: new Date().toISOString(), par: str(b.par, 80), data: clean }); return send(res, 200, { ok: true, collections: Object.keys(clean).length, at: new Date().toISOString() });
   }
-  const mp = p.match(/^\/api\/commandes\/(CMD-WEB-\d{4}-\d{4})\/photos$/);
-  //if (mp && m === 'GET') 
-  //{   // photos d'origine (Full HD) téléchargées par l'administrateur
-   // if (!isAdmin(req)) return send(res, 401, { erreur: 'Clé d\'accès invalide.' });
-    return send(res, 200, { photos: await store.getPhotos(mp[1]) });
-  //}
   const mt = p.match(/^\/api\/commandes\/(CMD-WEB-\d{4}-\d{4})$/);
-  //if (mt && m === 'PATCH') 
-  //{
-    //if (!isAdmin(req)) return send(res, 401, { erreur: 'Clé d\'accès invalide.' });
+  if (mt && m === 'PATCH') {
     const o = commandes.find(x => x.numero === mt[1]); if (!o) return send(res, 404, { erreur: 'Commande introuvable.' });
     const b = await body(req, 10 * 1024), now = new Date().toISOString();
     if (b.statut !== undefined) {
@@ -221,9 +184,9 @@ async function api(req, res, url) {
     if (b.factureNo !== undefined) o.factureNo = str(b.factureNo, 40);
     if (b.devisNo !== undefined) o.devisNo = str(b.devisNo, 40);
     await store.saveCommande(o); return send(res, 200, { ok: true, commande: o });
-  //}
+  }
   return send(res, 404, { erreur: 'Ressource introuvable.' });
-//}
+}
 
 /* ---------- fichiers statiques (vitrine) ---------- */
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
@@ -250,20 +213,18 @@ const handler = async (req, res) => {
 async function main() {
   const uri = process.env.MONGODB_URI, dbName = process.env.MONGODB_DB || 'clicone';
   store = uri ? await mongoStorage(uri, dbName) : fileStorage();
-  // première connexion à MongoDB : reprise automatique des données locales existantes (migration)
   if (uri && await store.isEmpty()) {
     const local = fileStorage(), c = await local.getConfig();
     if (c) {
       console.log('  Migration des données locales vers MongoDB Atlas…');
-      await store.setConfig(c); const cat = await local.getCatalogue(); if (cat && (cat.services || []).length) { cat.services = cat.services; await store.setCatalogue({ entreprise: cat.entreprise || {}, services: cat.services, livraison: cat.livraison || { actif: false, zones: [] }, updatedAt: cat.updatedAt }); }
-      for (const o of await local.getCommandes()) { await store.saveCommande(o); const ph = await local.getPhotos(o.numero); if (ph.length) await store.savePhotos(o.numero, ph); }
+      await store.setConfig(c); const cat = await local.getCatalogue(); if (cat && (cat.services || []).length) { cat.services = cat.services; await store.setCatalogue({ entreprise: cat.entreprise || {}, services: cat.services, updatedAt: cat.updatedAt }); }
+      for (const o of await local.getCommandes()) await store.saveCommande(o);
       const bk = await local.getBackup(); if (bk) await store.setBackup(bk); console.log('  Migration terminée.');
     }
   }
   cfg = await store.getConfig();
   if (!cfg) { cfg = { adminKey: crypto.randomBytes(24).toString('hex'), seq: {} }; await store.setConfig(cfg); }
-  if (process.env.ADMIN_KEY) cfg.adminKey = process.env.ADMIN_KEY;
-  catalogue = await store.getCatalogue(); catalogue.entreprise = catalogue.entreprise || {}; catalogue.services = catalogue.services || []; catalogue.livraison = catalogue.livraison || { actif: false, zones: [] }; delete catalogue.produits;
+  catalogue = await store.getCatalogue(); catalogue.entreprise = catalogue.entreprise || {}; catalogue.services = catalogue.services || []; delete catalogue.produits;
   commandes = await store.getCommandes();
   http.createServer(handler).listen(PORT, () => {
     console.log('\n  Boutique Clic-One démarrée : http://localhost:' + PORT);
