@@ -177,18 +177,18 @@ async function api(req, res, url) {
     catalogue = { entreprise: cleanEntreprise(b.entreprise), livraison: cleanLivraison(b.livraison), services: sv.ok, updatedAt: new Date().toISOString() };
     await store.setCatalogue(catalogue); return send(res, 200, { ok: true, services: catalogue.services.length, ignores: sv.ignores, updatedAt: catalogue.updatedAt });
   }
-  //if (p === '/api/commandes' && m === 'POST') {
+  //if (p === '/api/commandes' && m === 'POST') //{
     //if (limited(req, 'order', 8, 3600e3) || limited(req, 'order-fast', 1, 3000)) return send(res, 429, { erreur: 'Trop de commandes en peu de temps. Réessayez dans quelques minutes.' });
     //const o = await createOrder(await body(req, 16 * 1024 * 1024)); return send(res, 201, { ok: true, numero: o.numero, total: o.total, fraisLivraison: o.fraisLivraison, statut: o.statut });
   //}
-  //if (p === '/api/suivi' && m === 'GET') 
-  //{
+  //if (p === '/api/suivi' && m === 'GET')
    // if (limited(req, 'track', 30, 3600e3)) return send(res, 429, { erreur: 'Trop de recherches. Réessayez plus tard.' });
     const n = str(url.searchParams.get('numero'), 30).toUpperCase(), t = digits(url.searchParams.get('tel')), o = commandes.find(x => x.numero === n);
     if (!o || !t || digits(o.client.telephone) !== t) return send(res, 404, { erreur: 'Commande introuvable : vérifiez le numéro et le téléphone.' });
     return send(res, 200, { numero: o.numero, statut: o.statut, mode: o.mode, total: o.total, surDevis: !!o.surDevis, fraisLivraison: o.fraisLivraison || 0, modeReception: o.mode, creeLe: o.creeLe, lignes: o.lignes.map(l => ({ nom: l.nom, qty: l.qty, total: l.total })), historique: o.historique });
-  //}
-  //if (p === '/api/commandes' && m === 'GET'){
+
+  //if (p === '/api/commandes' && m === 'GET')
+  // {
    // if (!isAdmin(req)) return send(res, 401, { erreur: 'Clé d\'accès invalide.' });
     return send(res, 200, { commandes, catalogueMajLe: catalogue.updatedAt });
   //}
